@@ -3,6 +3,8 @@ import requests
 import pandas as pd
 from datetime import datetime, timezone
 import logging
+import io
+from PIL import Image, ImageDraw, ImageFont
 
 # Configure Python logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -41,7 +43,6 @@ def all_managers(league_id):
     if not rows:
         new_entries = first.get("new_entries", {})
         rows = list(new_entries.get("results", []))
-        # new_entries formats names differently, so we normalize them
         for r in rows:
             if "player_name" not in r:
                 r["player_name"] = f"{r.get('player_first_name', '')} {r.get('player_last_name', '')}".strip()
@@ -92,7 +93,6 @@ def manager_df(rows):
         "Entry ID": x.get("entry")
     } for x in rows])
     if not df.empty:
-        # fillna prevents errors if rank data is missing from new_entries
         df["Rank Movement"] = df["Previous Rank"].fillna(0) - df["Rank"].fillna(0)
         df["Gap to Leader"] = df["Total Points"].max() - df["Total Points"]
     return df
@@ -110,6 +110,52 @@ def history_df(data):
     if "value" in df: df["Team Value"] = pd.to_numeric(df["value"], errors="coerce") / 10
     if "bank" in df: df["Bank"] = pd.to_numeric(df["bank"], errors="coerce") / 10
     return df
+
+def create_snapshot_image(league_name, leader, best, climber, faller):
+    """Generates an image summary of the GW for sharing."""
+    img = Image.new('RGB', (800, 600), color=(17, 24, 39))
+    draw = ImageDraw.Draw(img)
+    
+    try:
+        # Tries to load standard fonts, falls back to default if not installed
+        font_title = ImageFont.truetype("Arial", 40)
+        font_header = ImageFont.truetype("Arial", 24)
+        font_text = ImageFont.truetype("Arial", 20)
+    except:
+        font_title = font_header = font_text = ImageFont.load_default()
+
+    # Draw Title
+    draw.text((400, 50), f"{league_name} - GW Snapshot", fill="white", font=font_title, anchor="mt")
+
+    # Top Manager Card
+    draw.rectangle([50, 150, 375, 300], fill=(31, 41, 55), outline=(59, 130, 246), width=2)
+    draw.text((60, 160), "🏆 Top Manager", fill=(96, 165, 250), font=font_header)
+    draw.text((60, 210), f"{leader['Manager']}", fill="white", font=font_text)
+    draw.text((60, 250), f"Total: {leader['Total Points']} pts", fill=(156, 163, 175), font=font_text)
+
+    # GW High Card
+    draw.rectangle([425, 150, 750, 300], fill=(31, 41, 55), outline=(16, 185, 129), width=2)
+    draw.text((435, 160), "🚀 GW High Score", fill=(52, 211, 153), font=font_header)
+    draw.text((435, 210), f"{best['Manager']}", fill="white", font=font_text)
+    draw.text((435, 250), f"GW Pts: {best['GW Points']} pts", fill=(156, 163, 175), font=font_text)
+
+    # Biggest Climber Card
+    draw.rectangle([50, 350, 375, 500], fill=(31, 41, 55), outline=(245, 158, 11), width=2)
+    draw.text((60, 360), "📈 Biggest Climber", fill=(251, 191, 36), font=font_header)
+    draw.text((60, 410), f"{climber['Manager']}", fill="white", font=font_text)
+    draw.text((60, 450), f"+{int(climber['Rank Movement'])} ranks", fill=(156, 163, 175), font=font_text)
+
+    # Biggest Faller Card
+    draw.rectangle([425, 350, 750, 500], fill=(31, 41, 55), outline=(239, 68, 68), width=2)
+    draw.text((435, 360), "📉 Biggest Fall", fill=(248, 113, 113), font=font_header)
+    draw.text((435, 410), f"{faller['Manager']}", fill="white", font=font_text)
+    draw.text((435, 450), f"{int(faller['Rank Movement'])} ranks", fill=(156, 163, 175), font=font_text)
+
+    # Convert to bytes
+    img_buf = io.BytesIO()
+    img.save(img_buf, format="PNG")
+    img_buf.seek(0)
+    return img_buf
 
 # --- UI Setup ---
 st.title("⚽ Enclave FPL Intelligence")
@@ -143,7 +189,8 @@ worst = df.sort_values("GW Points").iloc[0]
 climber = df.sort_values("Rank Movement", ascending=False).iloc[0]
 faller = df.sort_values("Rank Movement").iloc[0]
 
-st.subheader(league.get("name", f"League {league_id}"))
+league_name = league.get("name", f"League {league_id}")
+st.subheader(league_name)
 a,b,c,d = st.columns(4)
 a.metric("Managers", len(df))
 b.metric("Leader", leader["Manager"], f'{int(leader["Total Points"]):,} pts')
@@ -163,6 +210,16 @@ x,y,z = st.columns(3)
 x.metric("🚀 Biggest Climber", climber["Manager"], f'{int(climber["Rank Movement"]):+d} positions')
 y.metric("💥 Biggest Fall", faller["Manager"], f'{int(faller["Rank Movement"]):+d} positions')
 z.metric("🔥 Highest GW Score", best["Manager"], f'{int(best["GW Points"])} pts')
+
+# Download Button for the Image
+generated_image = create_snapshot_image(league_name, leader, best, climber, faller)
+st.download_button(
+    label="📸 Download Snapshot for Group Chat",
+    data=generated_image,
+    file_name=f"gw_snapshot_{datetime.now().strftime('%Y%m%d')}.png",
+    mime="image/png",
+    use_container_width=True
+)
 
 st.divider()
 st.header("🧠 Manager Intelligence")
