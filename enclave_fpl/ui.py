@@ -4,35 +4,27 @@ from __future__ import annotations
 
 import base64
 import io
-import subprocess
-import sys
 import zipfile
 
 import streamlit as st
 
+from .browser import BrowserUnavailable, ensure_chromium
 from .graphics import CATALOGUE, SIZES, render
 
 
 @st.cache_resource(show_spinner=False)
-def ensure_chromium() -> bool:
-    """Streamlit Cloud installs the pip package but not the browser binary.
+def _engine_status() -> tuple[bool, str]:
+    """Cached once per container. Returns (ready, detail-or-reason).
 
-    Runs at most once per container — cache_resource short-circuits every
-    later call, including across sessions.
+    Returns a tuple rather than raising so a failure is cached as a failure —
+    the caller renders an explanation instead of a stack trace, and the rest
+    of the dashboard keeps working.
     """
     try:
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as p:
-            p.chromium.launch().close()
-        return True
-    except Exception:
-        with st.spinner("First run — installing the rendering engine (about a minute)…"):
-            subprocess.run(
-                [sys.executable, "-m", "playwright", "install", "chromium", "--with-deps"],
-                check=False,
-            )
-        return True
+        with st.spinner("First run — setting up the rendering engine (up to a minute)…"):
+            return True, ensure_chromium()
+    except BrowserUnavailable as e:
+        return False, str(e)
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -48,16 +40,25 @@ def _photo_uri(upload) -> str | None:
 
 def render_graphics_section(df, gw: int) -> None:
     st.header("🎨 Matchday Graphics")
-    st.caption("Brand-locked cards, sized for WhatsApp and Instagram.")
 
-    ensure_chromium()
+    ready, detail = _engine_status()
+    if not ready:
+        st.error("The graphics engine isn't available on this host.")
+        with st.expander("What went wrong", expanded=True):
+            st.code(detail, language="text")
+        if st.button("Retry setup"):
+            _engine_status.clear()
+            st.rerun()
+        return
+
+    st.caption("Brand-locked cards, sized for WhatsApp and Instagram.")
 
     left, mid, right = st.columns([2, 1, 1])
     kind = left.selectbox("Card", list(CATALOGUE))
     size = mid.selectbox("Size", list(SIZES), index=0)
     scale = right.select_slider(
         "Quality", [2, 3, 4], value=3,
-        help="Supersample factor. 3 is the sweet spot; 4 is slower for little gain.",
+        help="Supersample factor. 3 is the sweet spot. Drop to 2 if the host is memory-tight.",
     )
 
     photo = _photo_uri(
@@ -65,8 +66,14 @@ def render_graphics_section(df, gw: int) -> None:
     )
 
     template, ctx = CATALOGUE[kind](df, gw, photo=photo)
-    with st.spinner("Rendering…"):
-        png = build_card(template, ctx, size, scale)
+
+    try:
+        with st.spinner("Rendering…"):
+            png = build_card(template, ctx, size, scale)
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Render failed: {type(e).__name__}: {e}")
+        st.caption("If this mentions memory or a closed target, try quality 2.")
+        return
 
     st.image(png, use_container_width=True)
 
@@ -81,13 +88,17 @@ def render_graphics_section(df, gw: int) -> None:
 
     if st.button("📦 Render the full weekly set", use_container_width=True):
         buf = io.BytesIO()
-        with st.spinner("Rendering all cards…"), zipfile.ZipFile(buf, "w") as z:
-            for name, fn in CATALOGUE.items():
-                t, c = fn(df, gw, photo=photo)
-                z.writestr(
-                    f"gw{gw}_{name.lower().replace(' ', '_')}.png",
-                    build_card(t, c, size, scale),
-                )
+        try:
+            with st.spinner("Rendering all cards…"), zipfile.ZipFile(buf, "w") as z:
+                for name, fn in CATALOGUE.items():
+                    t, c = fn(df, gw, photo=photo)
+                    z.writestr(
+                        f"gw{gw}_{name.lower().replace(' ', '_')}.png",
+                        build_card(t, c, size, scale),
+                    )
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Batch render failed: {type(e).__name__}: {e}")
+            return
         buf.seek(0)
         st.download_button(
             "⬇️ Download the set (.zip)",
