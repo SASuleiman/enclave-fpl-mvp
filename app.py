@@ -1,0 +1,204 @@
+import streamlit as st
+import requests
+import pandas as pd
+from datetime import datetime, timezone
+
+st.set_page_config(page_title="Enclave FPL Intelligence", page_icon="⚽", layout="wide")
+
+BASE_URL = "https://fantasy.premierleague.com/api"
+DEFAULT_LEAGUE_ID = 1138273
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; EnclaveFPL/1.0)", "Accept": "application/json"}
+
+def api_get(path, params=None):
+    r = requests.get(f"{BASE_URL}/{path.lstrip('/')}", params=params, headers=HEADERS, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+@st.cache_data(ttl=300)
+def league_page(league_id, page=1):
+    return api_get(f"leagues-classic/{league_id}/standings/", {
+        "page_standings": page, "page_new_entries": 1, "phase": 1
+    })
+
+@st.cache_data(ttl=3600)
+def all_managers(league_id):
+    first = league_page(league_id, 1)
+    league = first.get("league", {})
+    rows = list(first.get("standings", {}).get("results", []))
+    has_next = first.get("standings", {}).get("has_next", False)
+    page = 2
+    while has_next and page <= 1000:
+        data = league_page(league_id, page)
+        standings = data.get("standings", {})
+        rows.extend(standings.get("results", []))
+        has_next = standings.get("has_next", False)
+        page += 1
+    return league, rows
+
+@st.cache_data(ttl=3600)
+def manager_history(entry_id):
+    return api_get(f"entry/{entry_id}/history/")
+
+@st.cache_data(ttl=3600)
+def manager_transfers(entry_id):
+    return api_get(f"entry/{entry_id}/transfers/")
+
+@st.cache_data(ttl=300)
+def manager_picks(entry_id, gw):
+    return api_get(f"entry/{entry_id}/event/{gw}/picks/")
+
+@st.cache_data(ttl=3600)
+def bootstrap():
+    return api_get("bootstrap-static/")
+
+@st.cache_data(ttl=300)
+def live_gw(gw):
+    return api_get(f"event/{gw}/live/")
+
+def manager_df(rows):
+    df = pd.DataFrame([{
+        "Rank": x.get("rank"), "Previous Rank": x.get("last_rank"),
+        "Manager": x.get("player_name"), "Team": x.get("entry_name"),
+        "GW Points": x.get("event_total"), "Total Points": x.get("total"),
+        "Entry ID": x.get("entry")
+    } for x in rows])
+    if not df.empty:
+        df["Rank Movement"] = df["Previous Rank"] - df["Rank"]
+        df["Gap to Leader"] = df["Total Points"].max() - df["Total Points"]
+    return df
+
+def history_df(data):
+    df = pd.DataFrame(data.get("current", []))
+    if df.empty: return df
+    df = df.rename(columns={"event": "GW", "points": "Points",
+                            "total_points": "Total Points",
+                            "event_transfers": "Transfers",
+                            "event_transfers_cost": "Transfer Cost",
+                            "rank_sort": "Overall Rank"})
+    for c in ["GW", "Points", "Total Points", "Transfers", "Transfer Cost", "Overall Rank"]:
+        if c in df: df[c] = pd.to_numeric(df[c], errors="coerce")
+    if "value" in df: df["Team Value"] = pd.to_numeric(df["value"], errors="coerce") / 10
+    if "bank" in df: df["Bank"] = pd.to_numeric(df["bank"], errors="coerce") / 10
+    return df
+
+st.title("⚽ Enclave FPL Intelligence")
+st.caption("Data-driven Fantasy Premier League command centre for private Classic Leagues.")
+
+with st.sidebar:
+    st.header("League Settings")
+    league_id = st.number_input("Classic League ID", min_value=1, value=DEFAULT_LEAGUE_ID, step=1)
+    if st.button("🔄 Refresh FPL Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+try:
+    with st.spinner("Connecting to the FPL API..."):
+        league, rows = all_managers(int(league_id))
+        df = manager_df(rows)
+except Exception as e:
+    st.error(f"Could not load FPL data: {e}")
+    st.stop()
+
+if df.empty:
+    st.warning("No managers were returned.")
+    st.stop()
+
+leader = df.sort_values("Total Points", ascending=False).iloc[0]
+best = df.sort_values("GW Points", ascending=False).iloc[0]
+worst = df.sort_values("GW Points").iloc[0]
+climber = df.sort_values("Rank Movement", ascending=False).iloc[0]
+faller = df.sort_values("Rank Movement").iloc[0]
+
+st.subheader(league.get("name", f"League {league_id}"))
+a,b,c,d = st.columns(4)
+a.metric("Managers", len(df))
+b.metric("Leader", leader["Manager"], f'{int(leader["Total Points"]):,} pts')
+c.metric("GW High", best["Manager"], f'{int(best["GW Points"]):,} pts')
+d.metric("Biggest Climber", climber["Manager"], f'+{int(climber["Rank Movement"])}' if climber["Rank Movement"] > 0 else int(climber["Rank Movement"]))
+
+st.divider()
+st.header("🏆 League Table")
+show = df[["Rank","Manager","Team","GW Points","Total Points","Rank Movement","Gap to Leader"]].copy()
+show["Rank Movement"] = show["Rank Movement"].map(lambda x: f"+{int(x)}" if x > 0 else str(int(x)))
+show["Gap to Leader"] = show["Gap to Leader"].map(lambda x: f"{int(x):,}")
+st.dataframe(show, use_container_width=True, hide_index=True)
+
+st.divider()
+st.header("📊 Gameweek Snapshot")
+x,y,z = st.columns(3)
+x.metric("🚀 Biggest Climber", climber["Manager"], f'{int(climber["Rank Movement"]):+d} positions')
+y.metric("💥 Biggest Fall", faller["Manager"], f'{int(faller["Rank Movement"]):+d} positions')
+z.metric("🔥 Highest GW Score", best["Manager"], f'{int(best["GW Points"])} pts')
+
+st.divider()
+st.header("🧠 Manager Intelligence")
+manager_map = dict(zip(df["Manager"].astype(str), df["Entry ID"]))
+selected = st.selectbox("Select a manager", list(manager_map))
+entry_id = int(manager_map[selected])
+
+try:
+    hist = history_df(manager_history(entry_id))
+except Exception as e:
+    st.warning(f"Could not load manager history: {e}")
+    hist = pd.DataFrame()
+
+if not hist.empty:
+    latest = hist.iloc[-1]
+    a,b,c,d = st.columns(4)
+    a.metric("Season Points", f'{int(latest["Total Points"]):,}')
+    b.metric("Current Rank", f'{int(latest["Overall Rank"]):,}' if pd.notna(latest.get("Overall Rank")) else "—")
+    c.metric("Latest GW", f'{int(latest["Points"]):,}')
+    d.metric("Transfers", f'{int(latest["Transfers"]):,}')
+    st.subheader("Gameweek Performance")
+    chart = hist[["GW","Points"]].dropna().set_index("GW")
+    st.line_chart(chart["Points"], height=300)
+    with st.expander("Manager history"):
+        st.dataframe(hist, use_container_width=True, hide_index=True)
+
+    completed = sorted(hist["GW"].dropna().astype(int).unique().tolist())
+    st.subheader("🎯 Gameweek Squad Intelligence")
+    gw = st.selectbox("Gameweek", completed, index=len(completed)-1)
+    try:
+        picks = manager_picks(entry_id, gw).get("picks", [])
+        bs = bootstrap()
+        players = {p["id"]: p for p in bs.get("elements", [])}
+        teams = {t["id"]: t["name"] for t in bs.get("teams", [])}
+        pos = {1:"GKP",2:"DEF",3:"MID",4:"FWD"}
+        live = {e["id"]: e for e in live_gw(gw).get("elements", [])}
+        rows2 = []
+        for p in picks:
+            pl = players.get(p["element"], {})
+            pts = live.get(p["element"], {}).get("stats", {}).get("total_points", 0)
+            rows2.append({
+                "Player": pl.get("web_name", p["element"]),
+                "Position": pos.get(pl.get("element_type"), ""),
+                "Club": teams.get(pl.get("team"), ""),
+                "Captain": "⭐" if p.get("is_captain") else "",
+                "Vice": "VC" if p.get("is_vice_captain") else "",
+                "Multiplier": p.get("multiplier", 1),
+                "Squad Position": p.get("position"),
+                "GW Points": pts
+            })
+        st.dataframe(pd.DataFrame(rows2), use_container_width=True, hide_index=True)
+    except Exception as e:
+        st.warning(f"Could not load Gameweek picks: {e}")
+
+st.divider()
+st.header("🔄 Transfer Activity")
+try:
+    transfers = manager_transfers(entry_id)
+    bs = bootstrap()
+    players = {p["id"]: p for p in bs.get("elements", [])}
+    trows = [{
+        "GW": t.get("event"), "Time": t.get("time"),
+        "OUT": players.get(t.get("element_out"), {}).get("web_name", t.get("element_out")),
+        "IN": players.get(t.get("element_in"), {}).get("web_name", t.get("element_in")),
+        "Cost": t.get("cost", 0)
+    } for t in transfers]
+    st.dataframe(pd.DataFrame(trows), use_container_width=True, hide_index=True)
+except Exception as e:
+    st.warning(f"Could not load transfers: {e}")
+
+st.divider()
+st.caption(f"Last refresh: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+st.caption("Data source: Fantasy Premier League API. Independent analytics tool; not affiliated with the Premier League.")
