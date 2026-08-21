@@ -1,45 +1,144 @@
-# Enclave FPL Intelligence — Streamlit MVP
+# Enclave FPL Intelligence
 
-Default Classic League: **Bar Enclave — 1138273**
+Analytics and matchday graphics for the Bar Enclave private Classic League.
+Pulls live data from the Fantasy Premier League API and renders the weekly
+card set — table, biggest climber, manager of the week, damage report, review —
+in the Enclave brand at 1080×1350 and up.
 
-## Run locally
+## Quick start
 
 ```bash
+git clone <your-repo-url> && cd enclave-fpl
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+python -m playwright install chromium
 streamlit run app.py
 ```
 
-## Streamlit Community Cloud
+Set your league in the sidebar, or change `DEFAULT_LEAGUE_ID` in
+`enclave_fpl/fpl.py`.
 
-Upload `app.py` and `requirements.txt` to a GitHub repository and deploy `app.py`.
+To render the whole set without opening the app:
 
-No API key is required for the public endpoints used here.
+```bash
+python generate.py --gw 12 --out ./cards
+python generate.py --photo static/photos/roar.jpg --size story
+```
 
-## Current capabilities
+## Layout
 
-- Classic League standings with pagination
-- Manager registry / Entry IDs
-- Rank and rank movement
-- Manager history
-- Gameweek performance chart
-- Gameweek squad/picks
-- Captain and vice-captain
-- Player mapping
-- Transfer history
-- Basic league insights
+```
+app.py                        Streamlit entrypoint
+generate.py                   CLI renderer — cron / GitHub Actions
+enclave_fpl/
+  fpl.py                      FPL API client and dataframes
+  ui.py                       Streamlit graphics section
+  graphics/
+    render.py                 HTML → Chromium → PNG pipeline
+    cards.py                  dataframe → card context
+    templates/                one Jinja template per card
+    static/brand.css          every design token lives here
+    static/fonts/             Anton, Bebas Neue, Barlow Condensed (OFL)
+    static/photos/            drop background imagery here
+requirements.txt
+packages.txt                  system libs for Streamlit Cloud
+```
 
-## Planned next layer
+The split matters: `fpl.py` never imports the renderer and `graphics/` never
+imports Streamlit, so you can drive the cards from a script, a bot, or a
+scheduled job without dragging the UI along.
 
-- Gameweek-wide intelligence across every manager
-- Manager of the Week
-- Biggest Climber / Fall
-- Captaincy efficiency
-- Differential analysis
-- Transfer-hit efficiency
-- Bench points
-- Team-value trends
-- Consistency and momentum scoring
-- Rivalry analysis
-- Player ownership within the league
-- Automated weekly reports
-- Social copy and graphics integration
+## How the graphics work
+
+Design in CSS, rasterise in headless Chromium, downsample with Lanczos.
+
+The previous approach used Pillow's `ImageDraw`, which is why it plateaued at
+coloured rectangles. Pillow has no gradients, no blend modes, no clipping
+paths, and no letter-spacing control — most of the brand board is inexpressible
+in it. CSS has all of those, so every texture here is generated rather than
+shipped: the torn brush slashes are `clip-path` polygons, the orange duotone is
+`mix-blend-mode: color-dodge` over a desaturated photo, the halftone fade is a
+masked `radial-gradient`, and the grain is a 128px noise tile.
+
+Three implementation details carry the quality:
+
+**Supersampling.** Chromium renders at `device_scale_factor=3`, so a 1080×1350
+card is captured at 3240×4050 and downsampled. That's what makes Anton's thin
+counters and the tracked-out micro-labels look printed rather than
+screenshotted. Rendering at 1× is the single biggest quality mistake available.
+
+**Encoding.** The intermediate capture is JPEG q=97, not PNG. Chromium spends
+~2.8s PNG-encoding a 3× frame versus ~0.8s for JPEG, and since the frame is
+immediately downsampled the measured difference is 0.27/255 mean absolute error
+— invisible. The final PNG uses `compress_level=6` rather than `optimize=True`,
+which costs 2.5s to save 6% of file size. Pass `lossless=True` for the pure PNG
+chain.
+
+**Warm pages.** One Chromium page is cached per geometry, so decoded fonts stay
+resident instead of re-parsing ~600KB of base64 on every render.
+
+Together: 5.8s → **~1.1s per card**.
+
+## Background photos
+
+The photo-less cards look deliberate, but the board gets most of its heat from
+imagery. Drop shots into `enclave_fpl/graphics/static/photos/` and pass one in:
+
+```python
+from enclave_fpl.graphics import image_data_uri, render, CATALOGUE
+template, ctx = CATALOGUE["Biggest climber"](df, gw=12,
+                                             photo=image_data_uri("…/roar.jpg"))
+```
+
+The card handles the treatment, so any photo comes out on-brand. Use licensed
+stock (Unsplash, Pexels) rather than Premier League press images — FPL is
+relaxed about the API, not about club photography.
+
+## Adding a card
+
+1. New template in `graphics/templates/` extending `_base.html`, filling the
+   `body` block.
+2. New function in `graphics/cards.py` returning `(template_name, context)`.
+3. Add it to `CATALOGUE`.
+
+It appears in the Streamlit picker and the CLI batch automatically. Change
+`--orange` in `brand.css` and the entire set follows.
+
+## Deploying to Streamlit Community Cloud
+
+Push the repo, point Streamlit Cloud at `app.py`. `packages.txt` carries the
+Chromium system libraries; `ensure_chromium()` installs the browser binary on
+first boot and caches with `@st.cache_resource`, so it runs once per container.
+
+Chromium wants roughly 400MB while rendering. That fits the free tier. If you
+outgrow it, move rendering to a small worker (Fly.io, Railway) and have
+Streamlit call it — `render()` is already the entire API surface.
+
+One caveat: `sync_playwright` and Streamlit's threading don't always agree. The
+module-level lock in `render.py` serialises renders, which is correct for a
+league tool. For real concurrency, switch to the async API with one browser per
+event loop.
+
+## Automating the weekly post
+
+`generate.py` is designed for this. A scheduled GitHub Action that runs it after
+each gameweek settles and uploads the PNGs as artifacts is about fifteen lines
+of YAML, and from there a webhook can drop them straight into the group chat.
+
+## Notes on the rewrite
+
+Beyond the graphics, two things changed in the data layer:
+
+- **`current_gw()` is new.** The original app never resolved which gameweek it
+  was in, so every graphic would have needed a manual label. It reads
+  `is_current` from `bootstrap-static`, falling back to `is_next`, then to the
+  last finished gameweek in preseason.
+- **`last_rank == 0` is now handled.** The API returns 0 for anyone unranked the
+  previous week. Subtracting that from their current rank reported newcomers as
+  climbing several hundred places, which would have put the wrong name on the
+  Biggest Climber card. They now register as no movement.
+
+## Licence and attribution
+
+Fonts are SIL Open Font License, safe to redistribute. This is an independent
+analytics tool and is not affiliated with the Premier League.
