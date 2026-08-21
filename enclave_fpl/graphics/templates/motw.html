@@ -1,0 +1,19 @@
+{% extends "_base.html" %}
+{% block body %}
+  <div style="margin-top:56px">
+    <div class="eyebrow">Gameweek {{ gw }}</div>
+    <div class="headline" style="font-size:120px; margin-top:16px">
+      Manager<br>of the <em>Week</em>
+    </div>
+  </div>
+
+  <div class="stack-bottom">
+    <div class="figure">
+      <div class="figure__num" style="font-size:266px; color:var(--orange)">{{ points }}</div>
+      <div class="figure__unit">Pts</div>
+    </div>
+    <div class="deck" style="font-size:78px; color:var(--white); line-height:.9; margin-top:20px">{{ name }}</div>
+    <div class="deck" style="font-size:38px; margin-top:10px">{{ team }}</div>
+    <div class="stamp stamp--hot">{{ movement }}</div>
+  </div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "_base.html" %}
+{% block style %}<style>
+  .layer-duotone { background: linear-gradient(155deg, rgba(255,68,54,.55), transparent 60%); }
+  .note::before { background: var(--down); }
+</style>{% endblock %}
+{% block body %}
+  <div style="margin-top:56px">
+    <div class="eyebrow" style="color:var(--down)">Gameweek {{ gw }} &nbsp;/&nbsp; Casualty list</div>
+    <div class="headline" style="font-size:126px; margin-top:16px">
+      The Damage<br><em style="color:var(--down)">Report</em>
+    </div>
+  </div>
+
+  <div class="stack-bottom">
+    <div class="figure">
+      <div class="figure__num" style="font-size:250px; color:var(--down)">{{ points }}</div>
+      <div class="figure__unit">Pts</div>
+    </div>
+    <div class="deck" style="font-size:72px; color:var(--white); line-height:.9; margin-top:22px">{{ name }}</div>
+    <div class="notes">
+      {% for n in notes %}<div class="note">{{ n }}</div>{% endfor %}
+    </div>
+    <div class="stamp stamp--cold">{{ verdict }}</div>
+  </div>
+{% endblock %}

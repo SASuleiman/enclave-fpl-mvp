@@ -1,0 +1,17 @@
+{% extends "_base.html" %}
+{% block body %}
+  <div style="margin-top:56px">
+    <div class="eyebrow">Gameweek {{ gw }}</div>
+    <div class="headline" style="font-size:146px; margin-top:16px">
+      <em>Deadline</em><br>Alert
+    </div>
+  </div>
+
+  <div class="stack-bottom">
+    <div class="figure__num" style="font-size:172px; color:var(--white)">{{ countdown }}</div>
+    <div class="deck" style="font-size:40px; margin-top:18px">Until gameweek {{ gw }} closes</div>
+    <div class="tear" style="width:420px; margin:34px 0 26px"></div>
+    <div class="deck" style="font-size:44px; color:var(--white)">{{ deadline_local }}</div>
+    <div class="stamp stamp--hot">Make your moves.</div>
+  </div>
+{% endblock %}

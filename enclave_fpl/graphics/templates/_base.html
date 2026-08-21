@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>{{ font_css|safe }}</style>
+<style>{{ brand_css|safe }}</style>
+<style>:root { --w: {{ width }}px; --h: {{ height }}px; --grain: url('{{ grain }}'); }</style>
+{% block style %}{% endblock %}
+</head>
+<body>
+<div class="card">
+
+  {% if photo %}
+    <div class="layer-bg" style="background-image:url('{{ photo }}')"></div>
+    <div class="layer-duotone"></div>
+  {% else %}
+    <div class="layer-bg layer-bg--none"></div>
+  {% endif %}
+
+  <div class="layer-scrim"></div>
+  <div class="layer-halftone"></div>
+  <div class="streak" style="top:-70px; right:26px;  width:74px;  height:330px; transform:rotate(11deg); opacity:.85"></div>
+  <div class="streak" style="top:-70px; right:118px; width:30px;  height:250px; transform:rotate(11deg); opacity:.55"></div>
+  <div class="streak" style="top:-70px; right:-34px; width:44px;  height:400px; transform:rotate(11deg); opacity:.35; background:var(--white)"></div>
+  {% if watermark %}<div class="watermark" style="font-size:520px; right:-56px; top:{{ watermark_top|default('30%') }}">{{ watermark }}</div>{% endif %}
+  <div class="layer-grain"></div>
+
+  <div class="content">
+    <div class="lockup">
+      <div class="lockup__mark"></div>
+      <div class="lockup__wordmark">Bar <span>Enclave</span> FPL</div>
+    </div>
+
+    {% block body %}{% endblock %}
+
+    <div class="foot">
+      <div class="foot__tag">38 Gameweeks. <b>One champion.</b></div>
+      <div class="foot__gw">{{ season }}</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

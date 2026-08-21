@@ -1,0 +1,30 @@
+{% extends "_base.html" %}
+{% block body %}
+  <div style="margin-top:44px">
+    <div class="eyebrow">Gameweek {{ gw }} &nbsp;/&nbsp; The Table</div>
+    <div class="headline" style="font-size:112px; margin-top:14px">
+      The<br><em>Standings</em>
+    </div>
+  </div>
+
+  <div style="flex:1; display:flex; padding-bottom:34px"><table class="tbl">
+    <thead>
+      <tr>
+        <th class="col-pos">Pos</th>
+        <th>Manager</th>
+        <th class="col-num">Pts</th>
+        <th class="col-gw">GW</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="{{ 'is-leader' if loop.first else '' }}">
+        <td class="col-pos">{{ '%02d'|format(r.pos) }}</td>
+        <td>{{ r.name }}</td>
+        <td class="col-num">{{ '{:,}'.format(r.total) }}</td>
+        <td class="col-gw">+{{ r.gw }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+{% endblock %}

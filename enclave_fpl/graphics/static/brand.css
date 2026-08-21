@@ -1,0 +1,359 @@
+/* ==========================================================================
+   ENCLAVE FPL — brand stylesheet
+   Every texture here is generated in CSS. No Photoshop assets required.
+   ========================================================================== */
+
+:root {
+  /* Brand board palette */
+  --orange:      #FF8A00;
+  --orange-deep: #C25E00;
+  --orange-glow: #FFB454;
+  --white:       #FFFFFF;
+  --coal:        #1A1A1A;
+  --black:       #000000;
+
+  /* Derived / functional */
+  --ash:    #8B8B8B;
+  --smoke:  #C9C9C9;
+  --panel:  #141414;
+  --line:   rgba(255,255,255,.10);
+  --up:     #3DD68C;
+  --down:   #FF4436;
+
+  /* Rhythm */
+  --pad: 72px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: var(--black);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+/* --------------------------------------------------------------------------
+   Canvas
+   -------------------------------------------------------------------------- */
+.card {
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  overflow: hidden;
+  background: var(--black);
+  isolation: isolate;
+}
+
+/* Layer 1 — photo or synthetic stadium backdrop */
+.layer-bg {
+  position: absolute; inset: 0;
+  background-size: cover;
+  background-position: center 28%;
+  filter: grayscale(1) contrast(1.24) brightness(.74);
+}
+.layer-bg--none {
+  background:
+    repeating-linear-gradient(100deg, rgba(255,255,255,.022) 0 3px, transparent 3px 118px),
+    radial-gradient(120% 70% at 50% -12%, rgba(255,138,0,.30), transparent 62%),
+    radial-gradient(70% 45% at 12% 8%,  rgba(255,255,255,.16), transparent 60%),
+    radial-gradient(70% 45% at 88% 8%,  rgba(255,255,255,.16), transparent 60%),
+    linear-gradient(180deg, #221305 0%, #0d0d0d 48%, #000 100%);
+  filter: none;
+}
+
+/* Layer 2 — orange duotone wash over the photo */
+.layer-duotone {
+  position: absolute; inset: 0;
+  background: linear-gradient(155deg, rgba(255,138,0,.62), rgba(194,94,0,.18) 55%, transparent);
+  mix-blend-mode: color-dodge;
+  opacity: .55;
+}
+
+/* Layer 3 — readability floor */
+.layer-scrim {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.20) 34%, rgba(0,0,0,.86) 78%, #000 100%),
+    radial-gradient(108% 74% at 50% 46%, transparent 42%, rgba(0,0,0,.72) 100%);
+}
+
+/* Layer 4 — film grain (SVG turbulence, inline: no file to ship) */
+.layer-grain {
+  position: absolute; inset: 0;
+  background-image: var(--grain);
+  background-size: 128px 128px;
+  mix-blend-mode: overlay;
+  opacity: .26;
+  pointer-events: none;
+}
+
+/* Layer 5 — halftone dot fade, bottom-right */
+.layer-halftone {
+  position: absolute; right: -60px; bottom: -60px;
+  width: 520px; height: 520px;
+  background-image: radial-gradient(var(--orange) 1.6px, transparent 1.7px);
+  background-size: 13px 13px;
+  -webkit-mask-image: radial-gradient(circle at 100% 100%, #000 0%, transparent 68%);
+  opacity: .38;
+}
+
+.content {
+  position: relative;
+  z-index: 5;
+  height: 100%;
+  padding: var(--pad);
+  display: flex;
+  flex-direction: column;
+}
+
+/* --------------------------------------------------------------------------
+   Type
+   -------------------------------------------------------------------------- */
+.headline {
+  font-family: 'Anton', sans-serif;
+  font-weight: 400;
+  line-height: .82;
+  letter-spacing: -.012em;
+  color: var(--white);
+  text-transform: uppercase;
+}
+.headline em { font-style: normal; color: var(--orange); }
+
+.deck {
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+  color: var(--smoke);
+}
+
+.eyebrow {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 25px;
+  letter-spacing: .30em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+
+.micro {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 21px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--ash);
+}
+
+/* The signature move: a torn paint slash sitting behind a number.
+   Irregular clip-path = brushed edge without any bitmap. */
+.slash {
+  position: relative;
+  display: inline-block;
+  padding: .06em .30em .12em;
+  color: var(--black);
+  background: var(--orange);
+  clip-path: polygon(2.2% 8%, 99% 0%, 97.4% 86%, 1% 100%);
+}
+.slash--ghost { background: var(--white); }
+
+/* Torn horizontal rule */
+.tear {
+  height: 22px;
+  background: var(--white);
+  clip-path: polygon(0 28%, 9% 4%, 21% 22%, 34% 2%, 48% 26%, 61% 6%, 74% 24%, 87% 3%, 100% 18%,
+                     100% 78%, 88% 98%, 73% 76%, 59% 100%, 45% 74%, 31% 97%, 18% 75%, 7% 96%, 0 74%);
+}
+.tear--orange { background: var(--orange); }
+
+/* Angled accent bar, top-right corner energy */
+.streak {
+  position: absolute;
+  background: var(--orange);
+  clip-path: polygon(14% 0, 100% 0, 86% 100%, 0 100%);
+  opacity: .9;
+}
+
+/* --------------------------------------------------------------------------
+   Lockup
+   -------------------------------------------------------------------------- */
+.lockup { display: flex; align-items: center; gap: 18px; }
+.lockup__mark {
+  width: 54px; height: 54px;
+  border: 3.5px solid var(--white);
+  border-radius: 50%;
+  position: relative;
+  flex: none;
+}
+.lockup__mark::after {
+  content: '';
+  position: absolute; inset: 12px 12px auto auto;
+  width: 18px; height: 18px;
+  border: 3.5px solid var(--orange);
+  border-radius: 50%;
+}
+.lockup__wordmark {
+  font-family: 'Anton', sans-serif;
+  font-size: 30px;
+  letter-spacing: .01em;
+  color: var(--white);
+  text-transform: uppercase;
+  line-height: 1;
+}
+.lockup__wordmark span { color: var(--orange); }
+
+/* --------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+.foot {
+  margin-top: auto;
+  padding-top: 26px;
+  border-top: 2px solid var(--line);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.foot__tag {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 27px;
+  letter-spacing: .10em;
+  color: var(--white);
+}
+.foot__tag b { color: var(--orange); font-weight: 400; }
+.foot__gw {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 21px;
+  letter-spacing: .22em;
+  color: var(--ash);
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------------
+   League table
+   -------------------------------------------------------------------------- */
+.tbl { width: 100%; height: 100%; border-collapse: collapse; margin-top: 46px; }
+.tbl thead th {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 21px;
+  letter-spacing: .24em;
+  color: var(--ash);
+  text-transform: uppercase;
+  text-align: left;
+  padding: 0 0 16px;
+  border-bottom: 2px solid var(--line);
+}
+.tbl tbody td {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 40px;
+  letter-spacing: .02em;
+  color: var(--white);
+  padding: 17px 0;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  vertical-align: middle;
+}
+.tbl .col-pos  { width: 96px; color: var(--ash); }
+.tbl .col-num  { width: 148px; text-align: right; font-variant-numeric: tabular-nums; }
+.tbl .col-gw   { width: 132px; text-align: right; font-variant-numeric: tabular-nums; color: var(--orange); }
+.tbl thead .col-num, .tbl thead .col-gw { text-align: right; }
+
+.tbl tbody tr.is-leader td {
+  color: var(--black);
+  background: var(--orange);
+  border-bottom-color: var(--orange);
+}
+.tbl tbody tr.is-leader .col-pos,
+.tbl tbody tr.is-leader .col-gw { color: rgba(0,0,0,.72); }
+.tbl tbody tr.is-leader td:first-child { padding-left: 18px; }
+.tbl tbody tr.is-leader td:last-child  { padding-right: 18px; }
+
+/* --------------------------------------------------------------------------
+   Stat blocks
+   -------------------------------------------------------------------------- */
+.figure { display: flex; align-items: baseline; gap: 22px; }
+.figure__num {
+  font-family: 'Anton', sans-serif;
+  line-height: .78;
+  letter-spacing: -.025em;
+  font-variant-numeric: tabular-nums;
+}
+.figure__unit {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 46px;
+  letter-spacing: .10em;
+  color: var(--ash);
+}
+
+.notes { display: flex; flex-direction: column; gap: 14px; margin-top: 40px; }
+.note {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 33px;
+  letter-spacing: .05em;
+  color: var(--smoke);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.note::before {
+  content: '';
+  width: 26px; height: 6px;
+  background: var(--orange);
+  flex: none;
+}
+
+.stamp {
+  display: inline-block;
+  align-self: flex-start;
+  margin-top: 40px;
+  padding: 12px 30px 14px;
+  font-family: 'Anton', sans-serif;
+  font-size: 34px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--black);
+  background: var(--white);
+  clip-path: polygon(1.5% 6%, 99% 0, 98% 88%, .8% 100%);
+}
+.stamp--hot { background: var(--orange); }
+.stamp--cold { background: var(--down); color: var(--white); }
+
+/* Ledger rows for the weekly wrap */
+.ledger { margin-top: 44px; border-top: 2px solid var(--line); }
+.ledger__row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 22px 0;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.ledger__k {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700; font-size: 23px; letter-spacing: .24em;
+  text-transform: uppercase; color: var(--orange);
+}
+.ledger__v {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 44px; letter-spacing: .03em; color: var(--white);
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* Bottom-anchored content block. Uses flex-end rather than a second
+   margin-top:auto, which would split free space with .foot. */
+.stack-bottom {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-bottom: 34px;
+}
+
+/* Ghost numeral — fills the mid-canvas on photo-less cards and echoes
+   the "38" badge from the identity. */
+.watermark {
+  position: absolute;
+  z-index: 1;
+  font-family: 'Anton', sans-serif;
+  line-height: .74;
+  color: transparent;
+  -webkit-text-stroke: 3px rgba(255,138,0,.16);
+  user-select: none;
+}

@@ -1,0 +1,20 @@
+{% extends "_base.html" %}
+{% block body %}
+  <div style="margin-top:48px">
+    <div class="eyebrow">Weekly wrap</div>
+    <div class="headline" style="font-size:150px; margin-top:14px">
+      GW {{ gw }}<br><em>Review</em>
+    </div>
+  </div>
+
+  <div class="ledger">
+    {% for k, v in ledger %}
+    <div class="ledger__row"><div class="ledger__k">{{ k }}</div><div class="ledger__v">{{ v }}</div></div>
+    {% endfor %}
+  </div>
+
+  <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:44px">
+    <div class="micro">Next up</div>
+    <div class="deck" style="font-size:58px; color:var(--orange)">Gameweek {{ gw + 1 }} &#8594;</div>
+  </div>
+{% endblock %}

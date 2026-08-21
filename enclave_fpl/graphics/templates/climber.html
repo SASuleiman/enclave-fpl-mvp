@@ -1,0 +1,22 @@
+{% extends "_base.html" %}
+{% block body %}
+  <div style="margin-top:56px">
+    <div class="eyebrow">Gameweek {{ gw }}</div>
+    <div class="headline" style="font-size:132px; margin-top:16px">
+      Biggest<br><em>Climber</em>
+    </div>
+  </div>
+
+  <div class="stack-bottom">
+    <div class="figure">
+      <div class="figure__num" style="font-size:250px; color:var(--up)">&#8593;{{ places }}</div>
+      <div class="figure__unit">Places</div>
+    </div>
+    <div class="tear tear--orange" style="width:300px; margin:34px 0 28px"></div>
+    <div class="deck" style="font-size:80px; color:var(--white); line-height:.9">{{ name }}</div>
+    <div class="deck" style="font-size:38px; margin-top:12px">
+      {{ from_rank }} &nbsp;&#8594;&nbsp; <span style="color:var(--orange)">{{ to_rank }}</span>
+      &nbsp;&#183;&nbsp; {{ points }} pts
+    </div>
+  </div>
+{% endblock %}
