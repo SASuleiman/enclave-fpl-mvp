@@ -104,6 +104,30 @@ relaxed about the API, not about club photography.
 It appears in the Streamlit picker and the CLI batch automatically. Change
 `--orange` in `brand.css` and the entire set follows.
 
+## Troubleshooting
+
+**"The graphics engine isn't available on this host."** The app now shows the
+real Playwright error in an expander instead of crashing. Match it below.
+
+| Message contains | Cause | Fix |
+|---|---|---|
+| `Executable doesn't exist` | Browser binary never downloaded | Check outbound access to Playwright's CDN; hit **Retry setup** |
+| `error while loading shared libraries` | Missing apt package | Add the named `.so`'s package to `packages.txt`, redeploy |
+| `Target closed` / `killed` | Out of memory | Set quality to 2, or move to a bigger host |
+| `Sync API inside the asyncio loop` | Threading conflict | Render in a worker thread or use the async API |
+
+Two things that bit this project and are worth knowing:
+
+- **Never use `playwright install --with-deps` on a managed host.** It shells out
+  to `apt-get`, which has no root, and the installer exits code 100 *before
+  downloading the browser*. Use plain `playwright install chromium` and let
+  `packages.txt` supply the system libraries.
+- **`libasound2` is a virtual package on Ubuntu 24.04** (Streamlit Cloud's base)
+  with no installation candidate. apt fails on it, and the host then abandons
+  the whole `packages.txt`, so you silently get *no* system libraries. Use the
+  `t64` names: `libasound2t64`, `libatk1.0-0t64`, `libatk-bridge2.0-0t64`,
+  `libcups2t64`.
+
 ## Deploying to Streamlit Community Cloud
 
 Push the repo, point Streamlit Cloud at `app.py`. `packages.txt` carries the
@@ -118,6 +142,32 @@ One caveat: `sync_playwright` and Streamlit's threading don't always agree. The
 module-level lock in `render.py` serialises renders, which is correct for a
 league tool. For real concurrency, switch to the async API with one browser per
 event loop.
+
+## CI
+
+`.github/workflows/render-check.yml` runs on every push and PR. It installs
+`packages.txt` through apt on `ubuntu-24.04` — the same base image Streamlit
+Community Cloud uses — then installs Chromium and renders every card, failing
+the build if any comes back blank.
+
+This exists because two bugs reached production with nothing to catch them:
+`playwright install --with-deps` aborting silently without root, and
+`libasound2` being an uninstallable virtual package on 24.04, which made the
+host discard the entire `packages.txt`. Both would now fail CI in about ninety
+seconds.
+
+Run it locally the same way:
+
+```bash
+python tests/smoke_render.py
+```
+
+Rendered cards upload as a build artifact, so you can eyeball the real output
+on any commit without deploying.
+
+Note the runner is pinned to `ubuntu-24.04`, not `ubuntu-latest`. When
+`ubuntu-latest` rolls forward it stops matching your host, and the package-name
+check quietly becomes worthless.
 
 ## Automating the weekly post
 
