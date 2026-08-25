@@ -16,6 +16,7 @@ import base64
 import io
 import pathlib
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from PIL import Image
@@ -33,10 +34,45 @@ SIZES = {
     "wide":     (1600, 900),    # group-chat preview / Twitter
 }
 
-_lock = threading.Lock()
+# --------------------------------------------------------------------------
+# Browser thread
+#
+# Playwright's sync API is greenlet-based and pinned to the thread that
+# started it. Streamlit executes every rerun in a NEW ScriptRunner thread and
+# lets the previous one exit, so a browser cached in module globals becomes
+# unreachable the moment the thread that made it goes away:
+#
+#     greenlet.error: cannot switch to a different thread (which happens to
+#     have exited)
+#
+# The first render succeeds and every later one fails. So all Playwright work
+# is marshalled onto one dedicated worker thread that outlives any rerun.
+# max_workers=1 also serialises renders, which is why there is no lock here.
+# --------------------------------------------------------------------------
+_executor: ThreadPoolExecutor | None = None
+_executor_lock = threading.Lock()
 _pw = None
 _browser = None
 _pages: dict[tuple, object] = {}
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _executor
+    with _executor_lock:
+        if _executor is None:
+            _executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="enclave-render"
+            )
+        return _executor
+
+
+def run_in_browser_thread(fn, *args, **kwargs):
+    """Run fn on the thread that owns Playwright, blocking for the result.
+
+    Anything touching a Playwright object must go through here, including
+    health checks — otherwise it creates greenlets on a thread that will exit.
+    """
+    return _get_executor().submit(fn, *args, **kwargs).result()
 
 
 # --------------------------------------------------------------------------
@@ -131,7 +167,9 @@ def _get_browser():
     return _browser
 
 
-def _shutdown():
+def _close_everything():
+    """Must run on the browser thread — closing from elsewhere raises the same
+    greenlet error it is meant to clean up after."""
     global _pw, _browser
     _pages.clear()
     if _browser:
@@ -142,7 +180,50 @@ def _shutdown():
         _pw = None
 
 
+def _shutdown():
+    global _executor
+    if _executor is None:
+        return
+    try:
+        _executor.submit(_close_everything).result(timeout=10)
+    except Exception:
+        pass
+    _executor.shutdown(wait=False)
+    _executor = None
+
+
 atexit.register(_shutdown)
+
+
+def _capture(html: str, w: int, h: int, scale: int, lossless: bool) -> bytes:
+    """Rasterise the page. Runs ONLY on the browser thread."""
+    browser = _get_browser()
+    key = (w, h, scale)
+    page = _pages.get(key)
+    if page is None:
+        # One warm page per geometry. Reusing it keeps the decoded fonts in
+        # Chromium's memory instead of re-parsing ~600KB of base64 every time.
+        page = browser.new_page(
+            viewport={"width": w, "height": h},
+            device_scale_factor=scale,
+        )
+        _pages[key] = page
+
+    try:
+        page.set_content(html, wait_until="load")
+        page.evaluate("() => document.fonts.ready")
+        return (page.screenshot(type="png") if lossless
+                else page.screenshot(type="jpeg", quality=97))
+    except Exception:
+        # A crashed page poisons its cache entry: every later render of this
+        # geometry would fail against a dead target. Drop it so the next call
+        # builds a fresh one.
+        _pages.pop(key, None)
+        try:
+            page.close()
+        except Exception:
+            pass
+        raise
 
 
 def render(
@@ -162,23 +243,7 @@ def render(
     w, h = SIZES[size]
     html = build_html(template, ctx, size)
 
-    with _lock:
-        browser = _get_browser()
-        key = (w, h, scale)
-        page = _pages.get(key)
-        if page is None:
-            # One warm page per geometry. Reusing it keeps the decoded fonts
-            # in Chromium's memory instead of re-parsing ~600KB of base64
-            # on every single render.
-            page = browser.new_page(
-                viewport={"width": w, "height": h},
-                device_scale_factor=scale,
-            )
-            _pages[key] = page
-        page.set_content(html, wait_until="load")
-        page.evaluate("() => document.fonts.ready")
-        raw = (page.screenshot(type="png") if lossless
-               else page.screenshot(type="jpeg", quality=97))
+    raw = run_in_browser_thread(_capture, html, w, h, scale, lossless)
 
     # Downsample the supersampled capture — this is the quality step.
     img = Image.open(io.BytesIO(raw)).convert("RGB")

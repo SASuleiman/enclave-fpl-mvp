@@ -1,0 +1,63 @@
+name: Render check
+
+# Reproduces the Streamlit Cloud deployment environment and proves the graphics
+# pipeline actually works there. Two bugs shipped to production because nothing
+# validated this: `playwright install --with-deps` silently aborting without
+# root, and `libasound2` being a virtual package with no install candidate on
+# Ubuntu 24.04, which made the host discard the whole packages.txt.
+#
+# This job installs packages.txt through apt exactly as the host does, so an
+# unresolvable package name now fails CI instead of failing your league.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  render:
+    # Pin 24.04 to match Streamlit Community Cloud's base image. Do not use
+    # ubuntu-latest — when it rolls forward, this stops testing your host.
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install packages.txt (the way the host does)
+        run: |
+          sudo apt-get update -qq
+          # No --fix-missing, no ||true: an unresolvable name must fail loudly.
+          sudo apt-get install -y --no-install-recommends $(grep -vE '^\s*(#|$)' packages.txt)
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Chromium
+        # Deliberately no --with-deps. It needs root the host doesn't grant and
+        # aborts before downloading. System libs came from packages.txt above.
+        run: python -m playwright install chromium
+
+      - name: Render every card
+        run: python tests/smoke_render.py
+
+      - name: Report peak memory
+        # Streamlit Community Cloud is memory-limited and Chromium is the
+        # hungriest thing in the stack. Surfacing this makes an OOM on deploy
+        # predictable rather than mysterious.
+        run: |
+          /usr/bin/time -v python tests/smoke_render.py 2>&1 \
+            | grep -E "Maximum resident set size" || true
+
+      - name: Upload rendered cards
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-cards
+          path: smoke-output/
+          retention-days: 14

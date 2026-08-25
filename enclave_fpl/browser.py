@@ -36,16 +36,26 @@ class BrowserUnavailable(RuntimeError):
     """Chromium could not be installed or launched. Carries the real reason."""
 
 
-def _launch_probe() -> tuple[bool, str]:
-    """Try to actually start Chromium. The only honest health check."""
-    try:
-        from playwright.sync_api import sync_playwright
+def _probe() -> str:
+    """Start Chromium and report its version. Runs on the browser thread."""
+    from .graphics.render import _get_browser
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
-            version = browser.version
-            browser.close()
-        return True, version
+    return _get_browser().version
+
+
+def _launch_probe() -> tuple[bool, str]:
+    """Try to actually start Chromium. The only honest health check.
+
+    Delegated to the renderer's dedicated thread rather than run inline. The
+    sync Playwright API pins greenlets to whichever thread creates them, and
+    Streamlit's rerun threads exit between script runs — probing from one
+    would leave a second, orphaned driver behind and risk the same
+    "cannot switch to a different thread" failure the renderer avoids.
+    """
+    try:
+        from .graphics.render import run_in_browser_thread
+
+        return True, run_in_browser_thread(_probe)
     except Exception as e:  # noqa: BLE001 — we want the message, whatever it is
         return False, f"{type(e).__name__}: {e}"
 

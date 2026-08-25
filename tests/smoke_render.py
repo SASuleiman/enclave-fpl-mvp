@@ -36,6 +36,33 @@ ROWS = [
 ]
 
 
+def rerun_thread_check() -> str | None:
+    """Render from threads that then exit, as Streamlit does on every rerun.
+
+    Regression guard: the browser used to be cached in module globals, so the
+    second rerun died with "greenlet.error: cannot switch to a different
+    thread (which happens to have exited)". Rendering once proves nothing —
+    the first call always worked.
+    """
+    import threading
+
+    df = pd.DataFrame(ROWS)
+    template, ctx = CATALOGUE["Biggest climber"](df, 12)
+    result = {}
+
+    for i in range(3):
+        def go(i=i):
+            try:
+                render(template, ctx, scale=2)
+            except Exception as e:
+                result[i] = f"{type(e).__name__}: {e}"
+        t = threading.Thread(target=go)
+        t.start()
+        t.join()
+
+    return result.get(1) or result.get(2)
+
+
 def main() -> int:
     OUT.mkdir(exist_ok=True)
     df = pd.DataFrame(ROWS)
@@ -68,6 +95,13 @@ def main() -> int:
         except Exception as e:
             failures.append(f"{name}: {type(e).__name__}: {e}")
             print(f"  FAIL  {name:24s} {e}")
+
+    err = rerun_thread_check()
+    if err:
+        failures.append(f"cross-thread rerun: {err}")
+        print(f"  FAIL  {'cross-thread reruns':24s} {err}")
+    else:
+        print(f"  PASS  {'cross-thread reruns':24s} survives Streamlit-style reruns")
 
     peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     print(f"\npeak python RSS: {peak_mb:.0f} MB (Chromium is a separate process)")
